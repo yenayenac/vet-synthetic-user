@@ -125,6 +125,25 @@ JSON 배열 하나만 출력한다. 설명을 덧붙이지 않는다.
 # ──────────────────────────────────────────────────────────────
 # 함수들
 # ──────────────────────────────────────────────────────────────
+def _text_of(resp):
+    """
+    모델 응답에서 '글자'만 꺼낸다.
+    응답에는 생각 과정 같은 다른 칸이 섞여 올 수 있어서,
+    첫 칸을 무조건 글자로 읽으면 터진다. 글자 칸만 골라 이어 붙인다.
+    """
+    parts = []
+    for b in getattr(resp, "content", []) or []:
+        if getattr(b, "type", None) == "text" and getattr(b, "text", None):
+            parts.append(b.text)
+    if parts:
+        return "\n".join(parts).strip()
+    for b in getattr(resp, "content", []) or []:
+        t = getattr(b, "text", None)
+        if t:
+            return str(t).strip()
+    return ""
+
+
 def _parse_json(text: str, fallback):
     """모델이 JSON 앞뒤에 말을 붙였을 때도 건져낸다."""
     text = text.strip()
@@ -170,11 +189,14 @@ def decide(client, model, question, transcript, last_answer, probe_count):
 
     resp = client.messages.create(
         model=model,
-        max_tokens=400,
+        max_tokens=1500,
         system=MODERATOR_SYSTEM,
         messages=[{"role": "user", "content": user}],
     )
-    out = _parse_json(resp.content[0].text, {"action": "next", "why": "판단 실패"})
+    raw = _text_of(resp)
+    if not raw:
+        return {"action": "next", "why": "판단 응답 비어 있음"}
+    out = _parse_json(raw, {"action": "next", "why": "판단 실패"})
     if out.get("action") == "probe" and not out.get("question"):
         out = {"action": "next", "why": "꼬리 질문 비어 있음"}
     return out
@@ -192,11 +214,11 @@ def ask_persona(client, model, system_prompt, transcript, question_text):
 
     resp = client.messages.create(
         model=model,
-        max_tokens=600,
+        max_tokens=1200,
         system=system_prompt,
         messages=messages,
     )
-    return resp.content[0].text.strip()
+    return _text_of(resp) or "그건 제 경험에 없어요."
 
 
 def extract_needs(client, model, persona_name, transcript):
@@ -210,7 +232,7 @@ def extract_needs(client, model, persona_name, transcript):
         system=ANALYZER_SYSTEM,
         messages=[{"role": "user", "content": user}],
     )
-    return _parse_json(resp.content[0].text, [])
+    return _parse_json(_text_of(resp), [])
 
 
 def transcript_to_markdown(persona_label_text, mode, transcript):
@@ -271,9 +293,9 @@ def ask_in_group(client, model, system_prompt, transcript, question, others):
     messages.append({"role": "user", "content": user})
 
     resp = client.messages.create(
-        model=model, max_tokens=600, system=system_prompt, messages=messages
+        model=model, max_tokens=1200, system=system_prompt, messages=messages
     )
-    return resp.content[0].text.strip()
+    return _text_of(resp) or "그건 제 경험에 없어요."
 
 
 REACTION_QUESTION = """방금 다른 분이 한 말 중에 '나는 좀 다른데' 싶은 대목이 있었나요?
