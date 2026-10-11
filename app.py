@@ -79,7 +79,7 @@ with st.sidebar:
 
     pid = st.selectbox(
         "인물",
-        list(kb.PERSONAS.keys()),
+        list(kb.ALL_SPEAKERS.keys()),
         format_func=lambda k: kb.persona_label(k),
     )
     mode = st.radio(
@@ -91,10 +91,13 @@ with st.sidebar:
     model = MODELS[model_label]
 
     st.divider()
-    p = kb.PERSONAS[pid]
+    p = kb.ALL_SPEAKERS[pid]
     st.markdown(f"**{p['name']}** · {p['type']}")
     st.caption(p["one_line"])
-    st.caption(f"표본 비중 {p['share']}% · 근거 행 {len(p['evidence'])}건")
+    if p.get("share"):
+        st.caption(f"표본 비중 {p['share']}% · 근거 행 {len(p['evidence'])}건")
+    else:
+        st.caption(f"공급자 측 · 근거 행 {len(p['evidence'])}건")
 
     st.divider()
     if st.button("인터뷰 초기화", use_container_width=True):
@@ -224,7 +227,7 @@ with tab_interview:
         st.download_button(
             "전사록 내려받기 (.md)",
             md,
-            file_name=f"전사록_{kb.PERSONAS[pid]['name']}_{mode}.md",
+            file_name=f"전사록_{kb.ALL_SPEAKERS[pid]['name']}_{mode}.md",
             mime="text/markdown",
         )
         with st.expander("모더레이터가 내린 판단 기록"):
@@ -264,7 +267,7 @@ with tab_fgi:
         default=["P1", "P3", "P4"],
         format_func=lambda k: kb.persona_label(k),
     )
-    if kb.STAKEHOLDERS == {}:
+    if False:
         st.info(
             "지금은 보호자만 있습니다. 보호자끼리만 모으면 '병원이 설명을 안 해줬다'로 합창이 끝납니다. "
             "준영 님 패널의 수의사·간호사·가족 근거를 `knowledge_base.py`의 STAKEHOLDERS에 채우면 "
@@ -410,12 +413,12 @@ with tab_needs:
             w = csv.writer(buf)
             w.writerow(["출처", "인물", "니즈종류", "니즈", "근거 인용", "문항"])
             for n in needs:
-                w.writerow(["S(합성)", kb.PERSONAS[pid]["name"], n.get("type", ""),
+                w.writerow(["S(합성)", kb.ALL_SPEAKERS[pid]["name"], n.get("type", ""),
                             n.get("need", ""), n.get("quote", ""), n.get("q", "")])
             st.download_button(
                 "포스트잇 내려받기 (.csv)",
                 buf.getvalue().encode("utf-8-sig"),
-                file_name=f"포스트잇_{kb.PERSONAS[pid]['name']}.csv",
+                file_name=f"포스트잇_{kb.ALL_SPEAKERS[pid]['name']}.csv",
                 mime="text/csv",
             )
             st.caption(
@@ -428,9 +431,9 @@ with tab_needs:
 # 3. 인물 프로필
 # ──────────────────────────────────────────────────────────────
 with tab_profile:
-    p = kb.PERSONAS[pid]
+    p = kb.ALL_SPEAKERS[pid]
     st.markdown(f"## {p['name']}")
-    st.markdown(f"**{p['type']}** · 표본 비중 {p['share']}%")
+    st.markdown(f"**{p['type']}**" + (f" · 표본 비중 {p['share']}%" if p.get("share") else ""))
     st.markdown(f"> {p['one_line']}")
     c = st.columns(5)
     for col, (title, key) in zip(
@@ -453,8 +456,8 @@ with tab_profile:
 # 4. 근거 자료
 # ──────────────────────────────────────────────────────────────
 with tab_evidence:
-    st.markdown(f"#### {kb.PERSONAS[pid]['name']}에게 주입된 근거 {len(kb.PERSONAS[pid]['evidence'])}건")
-    for n in kb.PERSONAS[pid]["evidence"]:
+    st.markdown(f"#### {kb.ALL_SPEAKERS[pid]['name']}에게 주입된 근거 {len(kb.ALL_SPEAKERS[pid]['evidence'])}건")
+    for n in kb.ALL_SPEAKERS[pid]["evidence"]:
         if n in kb.EVIDENCE:
             st.markdown(f"**#{n}** {kb.EVIDENCE[n]}")
     st.divider()
