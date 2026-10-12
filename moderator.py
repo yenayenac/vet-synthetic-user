@@ -257,13 +257,37 @@ def transcript_to_markdown(persona_label_text, mode, transcript):
 # 1:1에서는 안 나오는 데이터가 여기서 나온다:
 #   한 사람이 "못 물었다"고 할 때 옆 사람이 "왜 안 물어봐요?"라고 받는 장면.
 # ──────────────────────────────────────────────────────────────
-OUT_OF_SCOPE_HINTS = ["경험에 없", "잘 모르겠", "기억이 안", "그건 모르", "모르겠어요"]
+# 가드레일 판정
+#
+# 빨간 배지는 "자료 범위를 벗어나서 답을 못 했다"는 뜻이다.
+# 그래서 '자료에 없다'는 의미를 담은 표현만 신호로 쓴다.
+#
+# 주의 — 아래 표현들은 신호가 아니다. 보호자가 실제로 쓰는 정상 답변이다.
+#   "제가 잘한 건지 모르겠어요"   ← 감정 표현. 범위 안의 유효한 답
+#   "기억이 잘 안 나요"           ← 회상 실패. 그 자체가 데이터
+#   "무슨 말인지 모르겠더라고요"   ← 손희진 #56과 같은 핵심 발언
+# 이전 버전은 "모르겠"만 보고 이런 답에도 배지를 띄웠다.
+OUT_OF_SCOPE_MARKERS = [
+    "경험에 없", "경험엔 없", "경험에는 없",
+    "자료에 없", "자료엔 없", "자료에는 없",
+    "근거가 없", "근거에 없",
+    "겪어본 적이 없", "겪어본 적은 없", "겪은 적이 없",
+    "말씀드릴 수 있는 게 없", "드릴 말씀이 없",
+]
+
+# 거절은 짧다. 긴 답에 이 표현이 섞여 있으면 그건 답을 한 것이다.
+_REFUSAL_MAX_LEN = 160
 
 
 def is_out_of_scope(text: str) -> bool:
     """가드레일이 작동한 답인지 판정한다. 화면에 빨간 배지를 띄우는 데 쓴다."""
-    tail = text[-60:]
-    return any(h in tail for h in OUT_OF_SCOPE_HINTS)
+    if not text:
+        return False
+    stripped = text.strip()
+    if not any(m in stripped for m in OUT_OF_SCOPE_MARKERS):
+        return False
+    # 표현이 있어도 답변이 길면 실제로 뭔가를 말한 것이므로 배지를 띄우지 않는다.
+    return len(stripped) <= _REFUSAL_MAX_LEN
 
 
 def ask_in_group(client, model, system_prompt, transcript, question, others):
