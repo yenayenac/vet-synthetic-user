@@ -162,6 +162,16 @@ with tab_interview:
     run_all = c1.button("인터뷰 자동 진행 (10문항)", type="primary", use_container_width=True)
     run_one = c2.button("한 문항만 진행", use_container_width=True)
 
+    # 어느 문항을 돌릴지 고른다.
+    # 문항을 고쳤을 때 그 문항만 다시 받아야 하는데,
+    # 기본값(다음 미완료 문항)으로는 앞 문항부터 차례로 가야 해서 넣었다.
+    NEXT_LABEL = "다음 미완료 문항 (기본)"
+    one_pick = st.selectbox(
+        "‘한 문항만 진행’으로 돌릴 문항",
+        [NEXT_LABEL] + [f"{q['no']} · {q['text'][:30]}…" for q in mod.QUESTIONS],
+        help="이미 끝낸 문항을 골라도 됩니다. 그 문항만 다시 받아서 전사록 뒤에 붙입니다.",
+    )
+
     box = st.container()
 
     def render():
@@ -212,7 +222,12 @@ with tab_interview:
                  if r["role"] == "모더레이터" and r.get("mark", "").startswith("[Q")}
         todo = [q for q in mod.QUESTIONS if q["no"] not in asked]
         if run_one:
-            todo = todo[:1]
+            if one_pick == NEXT_LABEL:
+                todo = todo[:1]
+            else:
+                # 고른 문항은 이미 끝냈더라도 다시 돌린다.
+                no = one_pick.split(" ")[0]
+                todo = [q for q in mod.QUESTIONS if q["no"] == no]
 
         if not todo:
             st.info("10문항을 모두 마쳤습니다. '니즈 · 포스트잇' 탭으로 넘어가세요.")
