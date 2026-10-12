@@ -121,24 +121,36 @@ tab_interview, tab_fgi, tab_needs, tab_profile, tab_evidence = st.tabs(
 )
 
 
+# 가드레일 배지 3종. scope_status가 돌려주는 값과 짝이 맞는다.
+BADGE = {
+    "refusal": ("#DD002A", "⚠ 데이터 범위 외 — 답변 불가"),
+    "partial": ("#B26A00", "◐ 일부 답변 — 나머지는 자료 범위 밖"),
+}
+
+
+def badge_html(status, margin_top="8px"):
+    """배지 한 개를 그린다. status가 full이면 아무것도 그리지 않는다."""
+    if status not in BADGE:
+        return ""
+    color, label = BADGE[status]
+    return (
+        f'<div style="display:inline-block;margin-top:{margin_top};'
+        f'border:1px solid {color};color:{color};border-radius:4px;'
+        f'padding:4px 10px;font-size:13px;font-weight:600">{label}</div>'
+    )
+
+
 def answer_block(name, role, text):
-    """답변 한 칸. 가드레일이 걸린 답이면 빨간 배지를 띄운다."""
+    """답변 한 칸. 자료 범위를 벗어난 정도에 따라 배지를 띄운다."""
     st.markdown(f"**{name}** · {role}")
-    if mod.is_out_of_scope(text):
-        st.markdown(
-            f"""<div style="border:1px solid #DCDCDD;border-radius:6px;padding:14px;
-            color:#6C6F77;font-style:italic">{text}</div>
-            <div style="display:inline-block;margin-top:8px;border:1px solid #DD002A;
-            color:#DD002A;border-radius:4px;padding:4px 10px;font-size:13px;font-weight:600">
-            ⚠ 데이터 범위 외 — 답변 불가</div>""",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f"""<div style="border:1px solid #DCDCDD;border-radius:6px;padding:14px">
-            {text}</div>""",
-            unsafe_allow_html=True,
-        )
+    status = mod.scope_status(text)
+    # 전면 거절일 때만 본문을 흐리게 한다. 일부 답변은 쓸 수 있는 데이터다.
+    dim = "color:#6C6F77;font-style:italic" if status == "refusal" else ""
+    st.markdown(
+        f"""<div style="border:1px solid #DCDCDD;border-radius:6px;padding:14px;{dim}">
+        {text}</div>{badge_html(status)}""",
+        unsafe_allow_html=True,
+    )
     st.write("")
 
 
@@ -160,13 +172,9 @@ with tab_interview:
             else:
                 with box.chat_message("assistant", avatar="🐾"):
                     st.markdown(r["text"])
-                    if mod.is_out_of_scope(r["text"]):
-                        st.markdown(
-                            """<div style="display:inline-block;border:1px solid #DD002A;
-                            color:#DD002A;border-radius:4px;padding:3px 9px;font-size:13px;
-                            font-weight:600">⚠ 데이터 범위 외 — 답변 불가</div>""",
-                            unsafe_allow_html=True,
-                        )
+                    html = badge_html(mod.scope_status(r["text"]), margin_top="0")
+                    if html:
+                        st.markdown(html, unsafe_allow_html=True)
 
     def run_question(client, system_prompt, q, status):
         """한 문항을 끝까지 진행한다 — 본질문 + 꼬리 질문."""
@@ -351,7 +359,8 @@ with tab_fgi:
         for r in st.session_state.fgi:
             lines.append(f"## {r['label']} — {r['q']}\n")
             for a in r["answers"]:
-                flag = " `[데이터 범위 외]`" if mod.is_out_of_scope(a["text"]) else ""
+                _mark = {"refusal": " `[데이터 범위 외]`", "partial": " `[일부 답변]`"}
+                flag = _mark.get(mod.scope_status(a["text"]), "")
                 lines.append(f"**{a['name']} · {a['role']}**{flag}\n\n{a['text']}\n")
         st.download_button(
             "좌담회 전사록 내려받기 (.md)", "\n".join(lines),
