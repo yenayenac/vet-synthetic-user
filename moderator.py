@@ -38,8 +38,14 @@ QUESTIONS = [
      "text": "결제하고 병원 나왔을 때 기분이 어땠어요? 집에 와서 뭐 하셨어요?",
      "goal": "사후 행동 — 검색, 커뮤니티, 재선택."},
     {"no": "Q07", "block": "관계·마찰",
-     "text": "병원에서 묻기 쉬운 질문이랑 묻기 어려운 질문이 따로 있어요?",
-     "goal": "침묵의 경계선을 직접 그리게 한다."},
+     # 고친 이유: 원래 문항은 "묻기 쉬운 질문과 어려운 질문이 따로 있어요?"였다.
+     # 자기 경험을 유형별로 분류해 보라는 추상화 요구라서, 네 인물 모두
+     # "그건 제 경험에 없어요"로 답했다. 커뮤니티 글에는 겪은 일이 적혀 있지,
+     # 자기 질문을 쉬운 것과 어려운 것으로 나눈 기록은 없기 때문이다.
+     # 같은 것을 장면 두 개로 바꿔 물으면 자료 안에서 답이 나온다.
+     "text": "그 병원에서 실제로 입 밖에 내서 물어본 것 하나랑, "
+             "속으로만 하고 끝내 안 꺼낸 것 하나를 각각 말해 주세요.",
+     "goal": "침묵의 경계선을 분류가 아니라 장면 두 개로 그리게 한다."},
     {"no": "Q08", "block": "관계·마찰",
      "text": "가까운 사람이 똑같은 상황이라면, 뭐라고 해 주시겠어요?",
      "goal": "투사. 본인 얘기로는 말 못 하는 걸 끌어낸다."},
@@ -275,19 +281,51 @@ OUT_OF_SCOPE_MARKERS = [
     "말씀드릴 수 있는 게 없", "드릴 말씀이 없",
 ]
 
-# 거절은 짧다. 긴 답에 이 표현이 섞여 있으면 그건 답을 한 것이다.
-_REFUSAL_MAX_LEN = 160
+# 거절 문장을 뺀 나머지가 이보다 짧으면 '사실상 아무 말도 안 한 것'으로 본다.
+_SUBSTANCE_MIN_LEN = 25
+
+_EVIDENCE_TAG = re.compile(r"#\s*\d+")
+_SENT_SPLIT = re.compile(r"(?<=[.!?。])\s+|\n+")
+
+
+def _sentences(text: str):
+    """근거 번호를 떼고 문장 단위로 쪼갠다."""
+    cleaned = _EVIDENCE_TAG.sub(" ", text)
+    return [s.strip() for s in _SENT_SPLIT.split(cleaned) if s.strip()]
+
+
+def scope_status(text: str) -> str:
+    """
+    답변이 자료 범위 안에서 나왔는지 판정한다.
+
+      "full"    — 범위 안에서 답했다.                      배지 없음
+      "partial" — 일부는 답했고, 일부는 자료에 없다고 했다.  노란 배지
+      "refusal" — 사실상 전부 거절했다.                     빨간 배지
+
+    'partial'을 따로 둔 이유:
+    예전에는 "그건 제 경험에 없어요"가 한 번이라도 나오면 전부 빨간 배지였다.
+    그런데 실제로는 앞에서 답을 다 해놓고 마지막에만 범위 밖이라고 붙이는 경우가
+    많다. 윤다은이 "진료실에서는 뭘 물어본 기억이 없고, 집에 와서 커뮤니티에
+    물어봤어요"라고 답한 것은 분명한 답인데, 뒤에 붙은 한 문장 때문에
+    '답변 불가'로 표시되면 데이터를 버리게 된다.
+    """
+    if not text or not text.strip():
+        return "full"
+
+    sents = _sentences(text)
+    refusals = [s for s in sents if any(m in s for m in OUT_OF_SCOPE_MARKERS)]
+    if not refusals:
+        return "full"
+
+    substance = "".join(s for s in sents if s not in refusals)
+    # 공백과 문장부호를 뺀 실질 길이로 센다.
+    substance_len = len(re.sub(r"[\s.,!?~…·'\"ㅠㅜ]", "", substance))
+    return "partial" if substance_len >= _SUBSTANCE_MIN_LEN else "refusal"
 
 
 def is_out_of_scope(text: str) -> bool:
-    """가드레일이 작동한 답인지 판정한다. 화면에 빨간 배지를 띄우는 데 쓴다."""
-    if not text:
-        return False
-    stripped = text.strip()
-    if not any(m in stripped for m in OUT_OF_SCOPE_MARKERS):
-        return False
-    # 표현이 있어도 답변이 길면 실제로 뭔가를 말한 것이므로 배지를 띄우지 않는다.
-    return len(stripped) <= _REFUSAL_MAX_LEN
+    """가드레일이 전면 작동한 답인지 판정한다. (예전 호출부 호환용)"""
+    return scope_status(text) == "refusal"
 
 
 def ask_in_group(client, model, system_prompt, transcript, question, others):
